@@ -4,6 +4,13 @@
  Author:	Valmark
 */
 
+// Cycle 1 Library
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_SHT31.h>
+#include <stdio.h>
+
+Adafruit_SHT31 sht31 = Adafruit_SHT31();
 
 // Common
 const int buttonMainPin = 10;  // Main control button
@@ -22,32 +29,26 @@ const int red1led = 44;
 const int red2led = 48;
 const int red3led = 53;
 
-// Cycle 1 variebles
+//// Cycle 1 variebles
+String com = "";
 bool flag = false;
-bool manual_mode = false;
-bool developer_mode = false;
-int input1;
 
-float t1 = 0; // temp 1 data
-float t2 = 0; // temp 2 data
-float t3 = 0; // temp 3 data
-float t4 = 0; // temp 4 data
-float result = 0; // Main math varieble
-
-// Input convert varieble
+//// Input convert varieble
 int x = 0;
 int y = 0;
 int incomingByte = 0;
 int secondIncomingByte = 0;
 
-// Cycle 2 variebles
+//// Cycle 2 variebles
 int buttonState = 0;  // button 2 state
 int button_mode = 0;
 int buttonMain = 0;
 
-// arduino main function
+//// arduino main function
 void setup() {
     Serial.begin(9600);
+    while (!Serial) delay(100);
+    Serial.print("Valmark AM-V1 Control Panel "); Serial.print(app_type + " "); Serial.println(app_version); // Top of page
     pinMode(buttonMain, INPUT);
     buttonMain = digitalRead(buttonMainPin);
     pinMode(buttonPin, INPUT);
@@ -60,8 +61,8 @@ void setup() {
     pinMode(red2led, OUTPUT); // Red 2 LED
     pinMode(red3led, OUTPUT); // Red 3 LED
     // Cycle 1 Setup
-    if (buttonMain == HIGH) {
-        
+    if (!sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
+        Serial.println("Couldn't find SHT31");
     }
 }
 
@@ -69,43 +70,19 @@ void loop() {
     buttonMain = digitalRead(buttonMainPin);
     if (buttonMain == HIGH) {
         while (1) {
-            String com = Serial.readString();
-            if (com == "led") {
-                while (1) {
-                    switch (input())
-                    {
-                    case 1: digitalWrite(blue1led, HIGH); break;
-                    case 2: digitalWrite(blue2led, HIGH); break;
-                    case 3: digitalWrite(blue3led, HIGH); break;
-                    case 4: greenOn(); break;
-                    case 5: digitalWrite(red1led, HIGH); break;
-                    case 6: digitalWrite(red2led, HIGH); break;
-                    case 7: digitalWrite(red3led, HIGH); break;
-                    case 11: {
-                        digitalWrite(blue1led, HIGH);
-                        digitalWrite(red3led, HIGH);
-                        break;
-                    }
-                    case 22: {
-                        digitalWrite(blue2led, HIGH);
-                        digitalWrite(red2led, HIGH);
-                        break;
-                    }
-                    case 33: {
-                        digitalWrite(blue3led, HIGH);
-                        digitalWrite(red1led, HIGH);
-                        break;
-                    }
-                    case 123: redOn(); greenOn(); blueOn(); break;
-                    case 0: redOff(); greenOff(); blueOff(); break;
-                    default:
-                        errorLed();
-                        break;
-                    }
-                    buttonMain = digitalRead(buttonMainPin);
-                    if (buttonMain == LOW) break;
-                }
+            Serial.print("Input command: ");
+            com = inputString();
+            if (com.indexOf("test") >= 0) {
+                if(test()) Serial.println("Test complete");
             }
+            else if (com.indexOf("led") >= 0) {
+                ledControl();
+            }
+            else if (com.indexOf("temperature") >= 0 | com.indexOf("temp") >= 0) {
+                temperature();
+            }
+            else Serial.println("Wrong command, try again...");
+            Serial.println();
         }
     }
     else if (buttonMain == LOW) {
@@ -115,6 +92,146 @@ void loop() {
 }
 
 // Mode function
+bool test() {
+    Serial.println("TEST MODE ACTIVE");
+    if (!sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
+        Serial.println("Caution! Couldn't find SHT31!");
+    }
+    // Led
+    Serial.print("Led test: ");
+    digitalWrite(blue1led, HIGH);
+    delay(200);
+    digitalWrite(blue2led, HIGH);
+    delay(200);
+    digitalWrite(blue3led, HIGH);
+    delay(200);
+    digitalWrite(mainledPin, HIGH);
+    delay(200);
+    digitalWrite(red1led, HIGH);
+    delay(200);
+    digitalWrite(red2led, HIGH);
+    delay(200);
+    digitalWrite(red3led, HIGH);
+    delay(200);
+    redOff();
+    delay(200);
+    greenOff();
+    delay(200);
+    blueOff();
+    delay(500);
+    digitalWrite(blue1led, HIGH);
+    digitalWrite(blue3led, HIGH);
+    digitalWrite(red1led, HIGH);
+    digitalWrite(red3led, HIGH);
+    delay(200);
+    blueOff();
+    redOff();
+    digitalWrite(blue2led, HIGH);
+    digitalWrite(red2led, HIGH);
+    delay(200);
+    blueOff();
+    redOff();
+    delay(500);
+    digitalWrite(blue1led, HIGH);
+    digitalWrite(blue3led, HIGH);
+    digitalWrite(red1led, HIGH);
+    digitalWrite(red3led, HIGH);
+    delay(200);
+    blueOff();
+    redOff();
+    digitalWrite(blue2led, HIGH);
+    digitalWrite(red2led, HIGH);
+    delay(200);
+    blueOff();
+    redOff();
+    delay(500);
+    Serial.print("OK");
+    // temp
+    float t = sht31.readTemperature();
+    float h = sht31.readHumidity();
+    Serial.println(); Serial.print("Temperature module test: ");
+    if (!isnan(t)) Serial.print("PASS");
+    else Serial.print("Fail");
+    Serial.println(); Serial.print("Humidity module test: ");
+    if (!isnan(h)) Serial.print("PASS");
+    else Serial.print("Fail");
+    delay(200);
+    // error indicate
+    Serial.println(); Serial.print("Error indicate: ");
+    errorLed();
+    Serial.print("OK");
+    // button indicate
+    Serial.println(); Serial.print("Button position: ");
+    buttonMain = digitalRead(buttonMainPin);
+    if (buttonMain == HIGH) Serial.print("ON");
+    else Serial.print("OFF");
+    // input test
+    Serial.println(); Serial.print("Input number: ");
+    input();
+    Serial.println(); Serial.print("Input string: ");
+    inputString();
+    // Finish
+    return true;
+}
+void ledControl() {
+    while (1) {
+        Serial.println();
+        Serial.print("Please type led command number: ");
+        switch (input())
+        {
+        case 1: digitalWrite(blue1led, HIGH); break;
+        case 2: digitalWrite(blue2led, HIGH); break;
+        case 3: digitalWrite(blue3led, HIGH); break;
+        case 4: greenOn(); break;
+        case 5: digitalWrite(red1led, HIGH); break;
+        case 6: digitalWrite(red2led, HIGH); break;
+        case 7: digitalWrite(red3led, HIGH); break;
+        case 11: {
+            digitalWrite(blue1led, HIGH);
+            digitalWrite(red3led, HIGH);
+            break;
+        }
+        case 22: {
+            digitalWrite(blue2led, HIGH);
+            digitalWrite(red2led, HIGH);
+            break;
+        }
+        case 33: {
+            digitalWrite(blue3led, HIGH);
+            digitalWrite(red1led, HIGH);
+            break;
+        }
+        case 123: redOn(); greenOn(); blueOn(); break;
+        case 0: redOff(); greenOff(); blueOff(); break;
+        default:
+            errorLed();
+            break;
+        }
+        buttonMain = digitalRead(buttonMainPin);
+        if (buttonMain == LOW) break;
+    }
+}
+void temperature() {
+    float t = sht31.readTemperature();
+    float h = sht31.readHumidity();
+    if (!isnan(t)) {  // check if 'is not a number'
+        Serial.print("Temperature *C = "); Serial.println(t, DEC);
+        blueOn();
+    }
+    else {
+        Serial.println("Failed to read temperature, please check temperature module");
+        errorLed();
+    }
+    if (!isnan(h)) {  // check if 'is not a number'
+        Serial.print("Humidity % = "); Serial.println(h);
+    }
+    else {
+        Serial.println("Failed to read humidity, please check temperature module");
+        errorLed();
+    }
+    delay(300);
+    blueOff();
+}
 void migalka() {
     // Cycle 2 Setup // Fix low voltage
     pinMode(blue1led, OUTPUT);
@@ -209,7 +326,6 @@ void blueOff() {
     digitalWrite(blue2led, LOW); // Синий 2 OFF
     digitalWrite(blue3led, LOW); // Синий 3 OFF
 }
-
 void redOn() {
     pinMode(red1led, OUTPUT);
     pinMode(red2led, OUTPUT);
@@ -223,7 +339,6 @@ void redOff() {
     digitalWrite(red2led, LOW); //Red 2 OFF
     digitalWrite(red3led, LOW); //Red 3 OFF
 }
-
 void greenOn() {
     pinMode(mainledPin, OUTPUT);
     digitalWrite(mainledPin, HIGH);
@@ -232,6 +347,7 @@ void greenOff() {
     digitalWrite(mainledPin, LOW);
 }
 
+// Service
 void errorLed() {
     pinMode(red1led, OUTPUT);
     pinMode(red3led, OUTPUT);
@@ -241,7 +357,6 @@ void errorLed() {
     digitalWrite(red1led, LOW); //Red 1 OFF
     digitalWrite(red3led, LOW); //Red 3 OFF
 }
-
 void pause() {
     Serial.println("Please type ENTER to continue...");
     while (1) {
@@ -256,9 +371,9 @@ void pause() {
     }
 }
 
+// Input
 int input() {
     x = 0;
-    Serial.println("Please type command number: ");
     while (1) {
         if (Serial.available() > 0) { //Input
             incomingByte = Serial.read() - 48;
@@ -266,7 +381,7 @@ int input() {
                 x = x * 10 + incomingByte;
             }
             else {
-                Serial.print(" "); Serial.println(x, DEC);
+                Serial.print(x, DEC);
                 break;
             }
         }
@@ -274,6 +389,13 @@ int input() {
     }
     return x;
 }
-
+String inputString() {
+    String str = "";
+    while (str == "") {
+        str = Serial.readString();
+    }
+    Serial.print(str);
+    return str;
+}
 
 // Test Block Warning!
