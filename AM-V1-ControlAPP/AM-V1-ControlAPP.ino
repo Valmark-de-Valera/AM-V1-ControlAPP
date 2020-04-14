@@ -1,7 +1,7 @@
-/*
- Name:		AM_V1_ControlAPP.ino
- Created:	4/13/2020 3:43:04 PM
- Author:	Valmark
+/* Meta data
+ * Author: Valerii Marchuk
+ * Department: Valmark Media Programming Centre
+ * Project: AM-V1 Control Panel 1.0 Stable
 */
 
 // Cycle 1 Library
@@ -15,8 +15,8 @@ Adafruit_SHT31 sht31 = Adafruit_SHT31();
 // Common
 const int buttonMainPin = 10;  // Main control button
 bool flag_menu = true;
-String app_type = "BETA";
-String app_version = "v0.1";
+String app_type = "Stable";
+String app_version = "v1.0";
 
 
 // Cycle 1 const
@@ -64,11 +64,14 @@ void setup() {
     if (!sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
         Serial.println("Couldn't find SHT31");
     }
+    Serial.println("System wait your first request. It`s special function for testing connection");
+    Serial.println("Input something to continue...");
+    delay(2000);
 }
 
 void loop() {
     buttonMain = digitalRead(buttonMainPin);
-    if (buttonMain == HIGH) {
+    if (buttonMain == HIGH && Serial.available()) {
         while (1) {
             Serial.print("Input command: ");
             com = inputString();
@@ -84,6 +87,9 @@ void loop() {
             else Serial.println("Wrong command, try again...");
             Serial.println();
         }
+    }
+    else if (buttonMain == HIGH) {
+        errorLed();
     }
     else if (buttonMain == LOW) {
         migalka();
