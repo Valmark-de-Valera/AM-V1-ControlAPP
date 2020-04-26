@@ -1,7 +1,7 @@
 /* Meta data
  * Author: Valerii Marchuk
  * Department: Valmark Media Programming Centre
- * Project: AM-V1 Control Panel 1.0 Stable
+ * Project: AM-V1 Control Panel 1.5 Beta
 */
 
 // Cycle 1 Library
@@ -14,9 +14,8 @@ Adafruit_SHT31 sht31 = Adafruit_SHT31();
 
 // Common
 const int buttonMainPin = 10;  // Main control button
-bool flag_menu = true;
-String app_type = "Stable";
-String app_version = "v1.0";
+String app_type = "Beta";
+String app_version = "v1.5";
 
 
 // Cycle 1 const
@@ -31,13 +30,12 @@ const int red3led = 53;
 
 //// Cycle 1 variebles
 String com = "";
-bool flag = false;
+//Calculator
+long number1;
+long number2;
+char calSignal;
+long result; // result of the calculation
 
-//// Input convert varieble
-int x = 0;
-int y = 0;
-int incomingByte = 0;
-int secondIncomingByte = 0;
 
 //// Cycle 2 variebles
 int buttonState = 0;  // button 2 state
@@ -65,7 +63,7 @@ void setup() {
         Serial.println("Couldn't find SHT31");
     }
     Serial.println("System wait your first request. It`s special function for testing connection");
-    Serial.println("Input something to continue...");
+    Serial.println("Input command");
     delay(2000);
 }
 
@@ -74,31 +72,46 @@ void loop() {
     if (buttonMain == HIGH && Serial.available()) {
         while (1) {
             Serial.print("Input command: ");
-            com = inputString();
+            com = InputString();
             if (com.indexOf("test") >= 0) {
-                if(test()) Serial.println("Test complete");
+                if(Test()) Serial.println("Test complete");
             }
             else if (com.indexOf("led") >= 0) {
-                ledControl();
+                LedControl();
             }
             else if (com.indexOf("temperature") >= 0 | com.indexOf("temp") >= 0) {
-                temperature();
+                Temperature();
             }
-            else Serial.println("Wrong command, try again...");
-            Serial.println();
+            else if (com.indexOf("Help") >= 0 | com.indexOf("help") >= 0 | com.indexOf("?") >= 0) {
+                Help();
+            }
+            else if (com.indexOf("Migalka") >= 0 | com.indexOf("migalka") >= 0) {
+                MigalkaMode();
+            }
+            else if (com.indexOf("calc") >= 0 | com.indexOf("calculator") >= 0) {
+                Serial.print("This function is unstable for now, to continue enter 'ignore', to exit type ENTER");
+                com = InputString();
+                if (com.indexOf("ignore") >= 0) {
+                    CalculatorMode();
+                }
+            }
+            else Serial.println("Wrong command, try again... \r\n");
         }
     }
     else if (buttonMain == HIGH) {
-        errorLed();
+        ErrorLed();
     }
     else if (buttonMain == LOW) {
-        migalka();
+        Migalka();
     }
-    blueOff();
+    BlueOff();
 }
 
 // Mode function
-bool test() {
+void InDevelopment() {
+    Serial.println("Sorry, but now function unavailble");
+}
+bool Test() {
     Serial.println("TEST MODE ACTIVE");
     if (!sht31.begin(0x44)) {   // Set to 0x45 for alternate i2c addr
         Serial.println("Caution! Couldn't find SHT31!");
@@ -119,37 +132,37 @@ bool test() {
     delay(200);
     digitalWrite(red3led, HIGH);
     delay(200);
-    redOff();
+    RedOff();
     delay(200);
-    greenOff();
+    GreenOff();
     delay(200);
-    blueOff();
+    BlueOff();
     delay(500);
     digitalWrite(blue1led, HIGH);
     digitalWrite(blue3led, HIGH);
     digitalWrite(red1led, HIGH);
     digitalWrite(red3led, HIGH);
     delay(200);
-    blueOff();
-    redOff();
+    BlueOff();
+    RedOff();
     digitalWrite(blue2led, HIGH);
     digitalWrite(red2led, HIGH);
     delay(200);
-    blueOff();
-    redOff();
+    BlueOff();
+    RedOff();
     delay(500);
     digitalWrite(blue1led, HIGH);
     digitalWrite(blue3led, HIGH);
     digitalWrite(red1led, HIGH);
     digitalWrite(red3led, HIGH);
     delay(200);
-    blueOff();
-    redOff();
+    BlueOff();
+    RedOff();
     digitalWrite(blue2led, HIGH);
     digitalWrite(red2led, HIGH);
     delay(200);
-    blueOff();
-    redOff();
+    BlueOff();
+    RedOff();
     delay(500);
     Serial.print("OK");
     // temp
@@ -164,7 +177,7 @@ bool test() {
     delay(200);
     // error indicate
     Serial.println(); Serial.print("Error indicate: ");
-    errorLed();
+    ErrorLed();
     Serial.print("OK");
     // button indicate
     Serial.println(); Serial.print("Button position: ");
@@ -173,22 +186,22 @@ bool test() {
     else Serial.print("OFF");
     // input test
     Serial.println(); Serial.print("Input number: ");
-    input();
+    Input();
     Serial.println(); Serial.print("Input string: ");
-    inputString();
+    InputString();
     // Finish
     return true;
 }
-void ledControl() {
+void LedControl() {
     while (1) {
         Serial.println();
         Serial.print("Please type led command number: ");
-        switch (input())
+        switch (Input())
         {
         case 1: digitalWrite(blue1led, HIGH); break;
         case 2: digitalWrite(blue2led, HIGH); break;
         case 3: digitalWrite(blue3led, HIGH); break;
-        case 4: greenOn(); break;
+        case 4: GreenOn(); break;
         case 5: digitalWrite(red1led, HIGH); break;
         case 6: digitalWrite(red2led, HIGH); break;
         case 7: digitalWrite(red3led, HIGH); break;
@@ -207,38 +220,38 @@ void ledControl() {
             digitalWrite(red1led, HIGH);
             break;
         }
-        case 123: redOn(); greenOn(); blueOn(); break;
-        case 0: redOff(); greenOff(); blueOff(); break;
+        case 123: RedOn(); GreenOn(); BlueOn(); break;
+        case 0: RedOff(); GreenOff(); BlueOff(); break;
         default:
-            errorLed();
+            ErrorLed();
             break;
         }
         buttonMain = digitalRead(buttonMainPin);
         if (buttonMain == LOW) break;
     }
 }
-void temperature() {
+void Temperature() {
     float t = sht31.readTemperature();
     float h = sht31.readHumidity();
     if (!isnan(t)) {  // check if 'is not a number'
         Serial.print("Temperature *C = "); Serial.println(t, DEC);
-        blueOn();
+        BlueOn();
     }
     else {
         Serial.println("Failed to read temperature, please check temperature module");
-        errorLed();
+        ErrorLed();
     }
     if (!isnan(h)) {  // check if 'is not a number'
         Serial.print("Humidity % = "); Serial.println(h);
     }
     else {
         Serial.println("Failed to read humidity, please check temperature module");
-        errorLed();
+        ErrorLed();
     }
     delay(300);
-    blueOff();
+    BlueOff();
 }
-void migalka() {
+void Migalka() {
     // Cycle 2 Setup // Fix low voltage
     pinMode(blue1led, OUTPUT);
     pinMode(blue2led, OUTPUT);
@@ -249,31 +262,31 @@ void migalka() {
     pinMode(red3led, OUTPUT);
     // Cycle 2 loop
     buttonState = digitalRead(buttonPin);
-    blueOn(); // blue ON
+    BlueOn(); // blue ON
     delay(150); // wait
-    blueOff(); //blue OFF
+    BlueOff(); //blue OFF
     delay(50); // wait
     if (buttonState == LOW) {
         delay(200); // wait
-        redOn();  // red ON
-        blueOn(); // blue ON
+        RedOn();  // red ON
+        BlueOn(); // blue ON
         delay(150); // wait
-        redOff();  // red OFF
-        blueOff(); // blue OFF
+        RedOff();  // red OFF
+        BlueOff(); // blue OFF
         delay(50); // wait
-        redOn();  // red ON
-        blueOn(); // blue ON
+        RedOn();  // red ON
+        BlueOn(); // blue ON
         delay(250); // wait
-        redOff();  // red OFF
-        blueOff(); // blue OFF
+        RedOff();  // red OFF
+        BlueOff(); // blue OFF
         delay(250); // wait
     }
     else {
-        redOff(); // red OFF
-        blueOn(); // blue ON 
+        RedOff(); // red OFF
+        BlueOn(); // blue ON 
         delay(250); // wait
     }
-    blueOff();
+    BlueOff();
     delay(150); // wait
     digitalWrite(blue1led, HIGH); // Blue 1 ON
     digitalWrite(blue3led, HIGH); // Blue 3 ON
@@ -290,36 +303,56 @@ void migalka() {
     digitalWrite(blue2led, HIGH); // Blue 2 ON
     digitalWrite(blue3led, LOW);  // Blue 3 OFF
     delay(250); // wait
-    blueOn();
+    BlueOn();
     delay(250); // wait
-    blueOff();
+    BlueOff();
     buttonState = digitalRead(buttonPin);
     if (buttonState == LOW) {
         delay(250);  // wait
-        redOn();
-        blueOn();
+        RedOn();
+        BlueOn();
         delay(150); // wait
-        redOff();
-        blueOff();
+        RedOff();
+        BlueOff();
         delay(50); // wait
-        redOn();
-        blueOn();
+        RedOn();
+        BlueOn();
         delay(250); // wait
-        redOff();
-        blueOff();
+        RedOff();
+        BlueOff();
     }
     else {
-        redOff();
+        RedOff();
         delay(50); // wait
-        blueOn();
+        BlueOn();
         delay(150); // wait
-        blueOff();
+        BlueOff();
     }
     delay(600); // wait END
 }
+void MigalkaMode() {
+    bool flag = true;
+    Serial.println("Control: 'stop' to stop scenary, 'start' to continue, 'exit' return to menu");
+    Serial.println("Input control command");
+    while (1)
+    {
+        if (flag) Migalka();
+        com = Serial.readString();
+        if (com.indexOf("stop") >= 0 | com.indexOf("Stop") >= 0) { flag = false; Serial.println("Stop scenery"); }
+        if (com.indexOf("start") >= 0 | com.indexOf("Start") >= 0) { flag = true; Serial.println("Start scenery"); }
+        if (com.indexOf("exit") >= 0 | com.indexOf("Exit") >= 0) break;
+    }
+}
+void Help() {
+    Serial.println("Help list");
+    Serial.println("Input 'test' to check the last modification of AM-V1 'Sendvich'");
+    Serial.println("Input 'led' to control led system of AM-V1 'Sendvich'");
+    Serial.println("Input 'temp' to check temperature");
+    Serial.println("Input 'migalka' to start migalka scenary");
+}
 
 // Led function
-void blueOn() {
+void BlueOn() {
     pinMode(blue1led, OUTPUT);
     pinMode(blue2led, OUTPUT);
     pinMode(blue3led, OUTPUT);
@@ -327,12 +360,12 @@ void blueOn() {
     digitalWrite(blue2led, HIGH); // Синий 2 ON
     digitalWrite(blue3led, HIGH); // Синий 3 ON
 }
-void blueOff() {
+void BlueOff() {
     digitalWrite(blue1led, LOW); // Синий 1 OFF
     digitalWrite(blue2led, LOW); // Синий 2 OFF
     digitalWrite(blue3led, LOW); // Синий 3 OFF
 }
-void redOn() {
+void RedOn() {
     pinMode(red1led, OUTPUT);
     pinMode(red2led, OUTPUT);
     pinMode(red3led, OUTPUT);
@@ -340,21 +373,21 @@ void redOn() {
     digitalWrite(red2led, HIGH); //Red 2 ON
     digitalWrite(red3led, HIGH); //Red 3 ON
 }
-void redOff() {
+void RedOff() {
     digitalWrite(red1led, LOW); //Red 1 OFF
     digitalWrite(red2led, LOW); //Red 2 OFF
     digitalWrite(red3led, LOW); //Red 3 OFF
 }
-void greenOn() {
+void GreenOn() {
     pinMode(mainledPin, OUTPUT);
     digitalWrite(mainledPin, HIGH);
 }
-void greenOff() {
+void GreenOff() {
     digitalWrite(mainledPin, LOW);
 }
 
 // Service
-void errorLed() {
+void ErrorLed() {
     pinMode(red1led, OUTPUT);
     pinMode(red3led, OUTPUT);
     digitalWrite(red1led, HIGH); //Red 1 ON
@@ -363,7 +396,10 @@ void errorLed() {
     digitalWrite(red1led, LOW); //Red 1 OFF
     digitalWrite(red3led, LOW); //Red 3 OFF
 }
-void pause() {
+void Pause() {
+    int x = 0;
+    int incomingByte = 0;
+    int secondIncomingByte = 0;
     Serial.println("Please type ENTER to continue...");
     while (1) {
         if (Serial.available() > 0) { //Input
@@ -376,10 +412,38 @@ void pause() {
 
     }
 }
+void CalculatorMode() {
+    Serial.println("Send a calculation: ");
+    while (Serial.available() <= 0) {
+        number1 = Serial.parseInt();
+        calSignal = Serial.read();
+        number2 = Serial.parseInt();
+        Calculator();
+        if (Serial.available() > 0) {
+            Serial.println("Result = ");
+            Serial.println(result);
+        }
+        Serial.println();
+    }
+}
+void Calculator() {
+    switch (calSignal) {
+    case '+': result = number1 + number2; break;
+    case '-': result = number1 - number2; break;
+    case '*': result = number1 * number2; break;
+    case '/': result = number1 / number2; // Warning! exception need
+        break;
+    default: Serial.println("Invalid input");
+        Serial.println();
+        result = 0;
+    }
+}
 
 // Input
-int input() {
-    x = 0;
+int Input() {
+    int x = 0;
+    int incomingByte = 0;
+    int secondIncomingByte = 0;
     while (1) {
         if (Serial.available() > 0) { //Input
             incomingByte = Serial.read() - 48;
@@ -395,7 +459,7 @@ int input() {
     }
     return x;
 }
-String inputString() {
+String InputString() {
     String str = "";
     while (str == "") {
         str = Serial.readString();
@@ -403,5 +467,4 @@ String inputString() {
     Serial.print(str);
     return str;
 }
-
 // Test Block Warning!
