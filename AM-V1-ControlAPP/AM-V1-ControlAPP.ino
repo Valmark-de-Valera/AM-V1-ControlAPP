@@ -1,10 +1,13 @@
 /* Meta data
  * Author: Valerii Marchuk
  * Department: Valmark Media Programming Centre
- * Project: AM-V1 Control Panel 1.5 Beta
+ * Project: AM-V1 Control Panel 2.0 Beta
 */
 
 // Cycle 1 Library
+#include <SPI.h>
+#include "SDFat.h"
+#include "sdios.h"
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_SHT31.h>
@@ -15,7 +18,7 @@ Adafruit_SHT31 sht31 = Adafruit_SHT31();
 // Common
 const int buttonMainPin = 10;  // Main control button
 String app_type = "Beta";
-String app_version = "v1.5";
+String app_version = "v2.0";
 
 
 // Cycle 1 const
@@ -30,12 +33,23 @@ const int red3led = 53;
 
 //// Cycle 1 variebles
 String com = "";
-//Calculator
+
+// File--------------------------------------------------------------------------
+#define SD_CS_PIN 4
+#define USE_SDIO 0
+const int8_t DISABLE_CHIP_SELECT = -1; // to 10 to disable the Ethernet controller.
+ArduinoOutStream cout(Serial);
+uint32_t cardSize;
+uint32_t eraseSize;
+SdFat SD;
+File serviceFile;
+#define SDErrorMsg(msg) SD.errorPrint(F(msg));
+
+// Calculator--------------------------------------------------------------------
 long number1;
 long number2;
 char calSignal;
-long result; // result of the calculation
-
+long result;
 
 //// Cycle 2 variebles
 int buttonState = 0;  // button 2 state
@@ -63,7 +77,7 @@ void setup() {
         Serial.println("Couldn't find SHT31");
     }
     Serial.println("System wait your first request. It`s special function for testing connection");
-    Serial.println("Input command");
+    Serial.print("Input command: ");
     delay(2000);
 }
 
@@ -88,6 +102,9 @@ void loop() {
             else if (com.indexOf("Migalka") >= 0 | com.indexOf("migalka") >= 0) {
                 MigalkaMode();
             }
+            else if (com.indexOf("sd") >= 0 | com.indexOf("SD") >= 0) {
+                SDMode();
+            }
             else if (com.indexOf("calc") >= 0 | com.indexOf("calculator") >= 0) {
                 Serial.print("This function is unstable for now, to continue enter 'ignore', to exit type ENTER");
                 com = InputString();
@@ -107,7 +124,7 @@ void loop() {
     BlueOff();
 }
 
-// Mode function
+// Mode function-----------------------------------------------------------------
 void InDevelopment() {
     Serial.println("Sorry, but now function unavailble");
 }
@@ -333,7 +350,7 @@ void Migalka() {
 void MigalkaMode() {
     bool flag = true;
     Serial.println("Control: 'stop' to stop scenary, 'start' to continue, 'exit' return to menu");
-    Serial.println("Input control command");
+    Serial.print("Input control command: ");
     while (1)
     {
         if (flag) Migalka();
@@ -343,15 +360,49 @@ void MigalkaMode() {
         if (com.indexOf("exit") >= 0 | com.indexOf("Exit") >= 0) break;
     }
 }
+void CalculatorMode() {
+    Serial.print("Send a calculation: ");
+    while (Serial.available() <= 0) {
+        number1 = Serial.parseInt();
+        calSignal = Serial.read();
+        number2 = Serial.parseInt();
+        Calculator();
+        if (Serial.available() > 0) {
+            Serial.println("Result = ");
+            Serial.println(result);
+        }
+        Serial.println();
+    }
+}
+void SDMode() {
+    while (1)
+    {
+        Serial.println("Control: 'test' to test SD Card, 'wipe' to wipe SD Card, 'exit' return to menu");
+        Serial.print("Input control command: ");
+        com = InputString();
+        if (com.indexOf("test") >= 0) {
+            if (SDF2()) Serial.println("Test complete\n");
+        }
+        else if (com.indexOf("wipe") >= 0) {
+            SDWipe();
+        }
+        else if (com.indexOf("exit") >= 0) {
+            break;
+        }
+        else Serial.println("Wrong command, try again... \r\n");
+    }
+}
 void Help() {
     Serial.println("Help list");
     Serial.println("Input 'test' to check the last modification of AM-V1 'Sendvich'");
     Serial.println("Input 'led' to control led system of AM-V1 'Sendvich'");
     Serial.println("Input 'temp' to check temperature");
     Serial.println("Input 'migalka' to start migalka scenary");
+    Serial.println("Input 'sd' to start test SD card");
+    //Serial.println("Input 'calc' to open calculator"); //Unstable for now
 }
 
-// Led function
+// Led function------------------------------------------------------------------
 void BlueOn() {
     pinMode(blue1led, OUTPUT);
     pinMode(blue2led, OUTPUT);
@@ -386,7 +437,7 @@ void GreenOff() {
     digitalWrite(mainledPin, LOW);
 }
 
-// Service
+//// Service
 void ErrorLed() {
     pinMode(red1led, OUTPUT);
     pinMode(red3led, OUTPUT);
@@ -412,34 +463,264 @@ void Pause() {
 
     }
 }
-void CalculatorMode() {
-    Serial.println("Send a calculation: ");
-    while (Serial.available() <= 0) {
-        number1 = Serial.parseInt();
-        calSignal = Serial.read();
-        number2 = Serial.parseInt();
-        Calculator();
-        if (Serial.available() > 0) {
-            Serial.println("Result = ");
-            Serial.println(result);
-        }
-        Serial.println();
-    }
-}
 void Calculator() {
     switch (calSignal) {
     case '+': result = number1 + number2; break;
     case '-': result = number1 - number2; break;
     case '*': result = number1 * number2; break;
-    case '/': result = number1 / number2; // Warning! exception need
+    case '/': 
+        if (number2 != 0) result = number1 / number2; 
+        else Serial.println("Zero Division!");
         break;
     default: Serial.println("Invalid input");
         Serial.println();
         result = 0;
     }
 }
+// SD----------------------------------------------------------------------------
+bool SDRWTest() {
+    String file = "test.txt";
+    Serial.print("Initializing SD card...");
 
-// Input
+    if (!SD.begin(4)) {
+        Serial.println("initialization failed!");
+        return;
+    }
+    Serial.println("initialization done.");
+    serviceFile = SD.open(file, FILE_WRITE);
+    if (serviceFile) {
+        Serial.print("Writing to " + file + "...");
+        serviceFile.println("testing 1, 2, 3.");
+        serviceFile.close();
+        Serial.println("done.");
+    }
+    else {
+        Serial.println("error opening " + file);
+    }
+    serviceFile = SD.open(file);
+    if (serviceFile) {
+        Serial.println(file + ": ");
+        while (serviceFile.available()) {
+            Serial.write(serviceFile.read());
+        }
+        serviceFile.close();
+        serviceFile = SD.open(file, FILE_WRITE);
+        if (serviceFile.remove()) Serial.println("Test file delete confirmed!");
+        else serviceFile.close();
+        return true;
+    }
+    else {
+        Serial.println("error opening " + file);
+    }
+    return;
+}
+void SDWipe() {
+    int c;
+    Serial.println("Type 'Y' to wipe all data.");
+    while (!Serial.available()) {
+        SysCall::yield();
+    }
+    c = Serial.read();
+    if (c != 'Y') {
+        SD.errorHalt("Quitting, you did not type 'Y'.");
+    }
+    if (!SD.begin(SD_CS_PIN, SD_SCK_MHZ(50))) {
+        SD.initErrorHalt();
+    }
+    if (!SD.wipe(&Serial)) {
+        SD.errorHalt("Wipe failed.");
+    } 
+    if (!SD.begin(SD_CS_PIN, SD_SCK_MHZ(50))) {
+        SD.errorHalt("Second init failed.");
+    }
+    Serial.println("Done");
+}
+uint8_t cidDmp() {
+    cid_t cid;
+    if (!SD.card()->readCID(&cid)) {
+        SDErrorMsg("readCID failed");
+        return false;
+    }
+    cout << F("\nManufacturer ID: ");
+    cout << hex << int(cid.mid) << dec << endl;
+    cout << F("OEM ID: ") << cid.oid[0] << cid.oid[1] << endl;
+    cout << F("Product: ");
+    for (uint8_t i = 0; i < 5; i++) {
+        cout << cid.pnm[i];
+    }
+    cout << F("\nVersion: ");
+    cout << int(cid.prv_n) << '.' << int(cid.prv_m) << endl;
+    cout << F("Serial number: ") << hex << cid.psn << dec << endl;
+    cout << F("Manufacturing date: ");
+    cout << int(cid.mdt_month) << '/';
+    cout << (2000 + cid.mdt_year_low + 10 * cid.mdt_year_high) << endl;
+    cout << endl;
+    return true;
+}
+uint8_t csdDmp() {
+    csd_t csd;
+    uint8_t eraseSingleBlock;
+    if (!SD.card()->readCSD(&csd)) {
+        SDErrorMsg("readcsd failed");
+        return false;
+    }
+    if (csd.v1.csd_ver == 0) {
+        eraseSingleBlock = csd.v1.erase_blk_en;
+        eraseSize = (csd.v1.sector_size_high << 1) | csd.v1.sector_size_low;
+    }
+    else if (csd.v2.csd_ver == 1) {
+        eraseSingleBlock = csd.v2.erase_blk_en;
+        eraseSize = (csd.v2.sector_size_high << 1) | csd.v2.sector_size_low;
+    }
+    else {
+        cout << F("csd version error\n");
+        return false;
+    }
+    eraseSize++;
+    cout << F("cardSize: ") << 0.000512 * cardSize;
+    cout << F(" MB (MB = 1,000,000 bytes)\n");
+
+    cout << F("flashEraseSize: ") << int(eraseSize) << F(" blocks\n");
+    cout << F("eraseSingleBlock: ");
+    if (eraseSingleBlock) {
+        cout << F("true\n");
+    }
+    else {
+        cout << F("false\n");
+    }
+    return true;
+}
+uint8_t partDmp() {
+    mbr_t mbr;
+    if (!SD.card()->readBlock(0, (uint8_t*)&mbr)) {
+        SDErrorMsg("read MBR failed");
+        return false;
+    }
+    for (uint8_t ip = 1; ip < 5; ip++) {
+        part_t* pt = &mbr.part[ip - 1];
+        if ((pt->boot & 0X7F) != 0 || pt->firstSector > cardSize) {
+            cout << F("\nNo MBR. Assuming Super Floppy format.\n");
+            return true;
+        }
+    }
+    cout << F("\nSD Partition Table\n");
+    cout << F("part,boot,type,start,length\n");
+    for (uint8_t ip = 1; ip < 5; ip++) {
+        part_t* pt = &mbr.part[ip - 1];
+        cout << int(ip) << ',' << hex << int(pt->boot) << ',' << int(pt->type);
+        cout << dec << ',' << pt->firstSector << ',' << pt->totalSectors << endl;
+    }
+    return true;
+}
+void volDmp() {
+    cout << F("\nVolume is FAT") << int(SD.vol()->fatType()) << endl;
+    cout << F("blocksPerCluster: ") << int(SD.vol()->blocksPerCluster()) << endl;
+    cout << F("clusterCount: ") << SD.vol()->clusterCount() << endl;
+    cout << F("freeClusters: ");
+    uint32_t volFree = SD.vol()->freeClusterCount();
+    cout << volFree << endl;
+    float fs = 0.000512 * volFree * SD.vol()->blocksPerCluster();
+    cout << F("freeSpace: ") << fs << F(" MB (MB = 1,000,000 bytes)\n");
+    cout << F("fatStartBlock: ") << SD.vol()->fatStartBlock() << endl;
+    cout << F("fatCount: ") << int(SD.vol()->fatCount()) << endl;
+    cout << F("blocksPerFat: ") << SD.vol()->blocksPerFat() << endl;
+    cout << F("rootDirStart: ") << SD.vol()->rootDirStart() << endl;
+    cout << F("dataStartBlock: ") << SD.vol()->dataStartBlock() << endl;
+    if (SD.vol()->dataStartBlock() % eraseSize) {
+        cout << F("Data area is not aligned on flash erase boundaries!\n");
+        cout << F("Download and use formatter from www.SDcard.org!\n");
+    }
+}
+void SDF1() {
+    SDRWTest();
+    // use uppercase in hex and use 0X base prefix
+    cout << uppercase << showbase << endl;
+
+    // F stores strings in flash to save RAM
+    cout << F("SDFat version: ") << SD_FAT_VERSION << endl;
+#if !USE_SDIO  
+    if (DISABLE_CHIP_SELECT < 0) {
+        cout << F(
+            "\nAssuming the SD is the only SPI device.\n"
+            "Edit DISABLE_CHIP_SELECT to disable another device.\n");
+    }
+    else {
+        cout << F("\nDisabling SPI device on pin ");
+        cout << int(DISABLE_CHIP_SELECT) << endl;
+        pinMode(DISABLE_CHIP_SELECT, OUTPUT);
+        digitalWrite(DISABLE_CHIP_SELECT, HIGH);
+    }
+    cout << F("\nAssuming the SD chip select pin is: ") << int(4);
+    cout << F("\nEdit SD_CHIP_SELECT to change the SD chip select pin.\n");
+#endif  // !USE_SDIO  
+}
+bool SDF2() {
+    SDF1();
+    uint32_t t = millis();
+#if USE_SDIO
+    if (!SD.cardBegin()) {
+        SDErrorMsg("\ncardBegin failed");
+        return false;
+    }
+#else
+    if (!SD.cardBegin(4, SD_SCK_MHZ(50))) {
+        SDErrorMsg("cardBegin failed");
+        return false;
+    }
+#endif 
+    t = millis() - t;
+
+    cardSize = SD.card()->cardSize();
+    if (cardSize == 0) {
+        SDErrorMsg("cardSize failed");
+        return false;
+    }
+    cout << F("\ninit time: ") << t << " ms" << endl;
+    cout << F("\nCard type: ");
+    switch (SD.card()->type()) {
+    case SD_CARD_TYPE_SD1:
+        cout << F("SD1\n");
+        break;
+
+    case SD_CARD_TYPE_SD2:
+        cout << F("SD2\n");
+        break;
+
+    case SD_CARD_TYPE_SDHC:
+        if (cardSize < 70000000) {
+            cout << F("SDHC\n");
+        }
+        else {
+            cout << F("SDXC\n");
+        }
+        break;
+
+    default:
+        cout << F("Unknown\n");
+    }
+    if (!cidDmp()) {
+        return false;
+    }
+    if (!csdDmp()) {
+        return false;
+    }
+    uint32_t ocr;
+    if (!SD.card()->readOCR(&ocr)) {
+        SDErrorMsg("\nreadOCR failed");
+        return false;
+    }
+    cout << F("OCR: ") << hex << ocr << dec << endl;
+    if (!partDmp()) {
+        return false;
+    }
+    if (!SD.fsBegin()) {
+        SDErrorMsg("\nFile System initialization failed.\n");
+        return false;
+    }
+    volDmp();
+    return true;
+}
+// Input-------------------------------------------------------------------------
 int Input() {
     int x = 0;
     int incomingByte = 0;
